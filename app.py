@@ -13,7 +13,7 @@ SIGNING_SECRET = os.environ["SLACK_SIGNING_SECRET"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 TARGET_CHANNEL = "random-kuiper"
-CAT_CHANNEL = "leo-kitty-cats-meow"
+CAT_CHANNEL = "cat-spam-random-kuiper"
 
 app = App(token=BOT_TOKEN, signing_secret=SIGNING_SECRET)
 flask_app = Flask(__name__)
@@ -112,7 +112,7 @@ def handle_message(body, client):
                 client.chat_postMessage(
                     channel=channel,
                     thread_ts=ts,
-                    text="Nice cat. This belongs in #leo-kitty-cats-meow 🐱"
+                    text="Nice cat. This belongs in #cat-spam-random-kuiper 🐱"
                 )
 
                 client.chat_postMessage(
