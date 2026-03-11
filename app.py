@@ -43,6 +43,7 @@ def handle_message(body, client):
     ts = event["ts"]
     channel = event["channel"]
 
+    # Emoji spam check
     if emoji_spam(text):
 
         client.chat_postMessage(
@@ -50,6 +51,26 @@ def handle_message(body, client):
             thread_ts=ts,
             text="Too many emojis! 🛑"
         )
+
+    # Check for uploaded images
+    if "files" in event:
+
+        for file in event["files"]:
+
+            if file["mimetype"].startswith("image"):
+
+                image_url = file["url_private"]
+
+                client.chat_postMessage(
+                    channel=channel,
+                    thread_ts=ts,
+                    text="Nice cat. This belongs in #leo-kitty-cats-meow 🐱"
+                )
+
+                client.chat_postMessage(
+                    channel="#leo-kitty-cats-meow",
+                    text=image_url
+                )
 
 
 @flask_app.route("/slack/events", methods=["POST"])
