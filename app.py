@@ -108,17 +108,24 @@ def handle_message(body, client):
             if not image_url:
                 continue
 
-            if is_cat_image(image_url):
-                client.chat_postMessage(
-                    channel=channel,
-                    thread_ts=ts,
-                    text="Nice cat. This belongs in #cat-spam-random-kuiper 🐱"
-                )
+          if is_cat_image(image_url):
 
-                client.chat_postMessage(
-                    channel=CAT_CHANNEL,
-                    text=image_url
-                )
+    client.chat_postMessage(
+        channel=channel,
+        thread_ts=ts,
+        text="Nice cat. This belongs in #cat-spam-random-kuiper 🐱"
+    )
+
+    client.chat_postMessage(
+        channel=CAT_CHANNEL,
+        text=image_url
+    )
+
+    # Delete the original message to "move" the image
+    client.chat_delete(
+        channel=channel,
+        ts=ts
+    )
             else:
                 print("Image was not a cat. Leaving it alone.")
 
