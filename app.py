@@ -12,7 +12,7 @@ BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
 SIGNING_SECRET = os.environ["SLACK_SIGNING_SECRET"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
-TARGET_CHANNEL = "random-kuiper"
+TARGET_CHANNEL = "cat-spam-test"
 CAT_CHANNEL = "cat-spam-random-kuiper"
 
 app = App(token=BOT_TOKEN, signing_secret=SIGNING_SECRET)
