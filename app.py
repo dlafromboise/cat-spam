@@ -1,16 +1,21 @@
 import os
 import time
+import threading
 import requests
 import datetime
 from collections import defaultdict
 from zoneinfo import ZoneInfo
+from flask import Flask
 
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
+PORT = int(os.environ.get("PORT", 10000))
 
 headers = {
     "Authorization": f"Bearer {SLACK_BOT_TOKEN}"
 }
+
+app = Flask(__name__)
 
 CAT_KEYWORDS = [
     "cat",
@@ -24,6 +29,11 @@ CAT_KEYWORDS = [
 ]
 
 LAST_POST_DATE = None
+
+
+@app.route("/", methods=["GET"])
+def health() -> str:
+    return "cat-spam is running"
 
 
 def get_channel_members() -> int:
@@ -201,7 +211,7 @@ def should_post_now() -> bool:
     return now_pt.hour == 17 and now_pt.minute == 0
 
 
-def run() -> None:
+def run_daily_report() -> None:
     global LAST_POST_DATE
 
     now_pt = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
@@ -225,13 +235,20 @@ def run() -> None:
     print("Daily report posted successfully.")
 
 
-if __name__ == "__main__":
-    print("Cat spam monitor started.")
+def scheduler_loop() -> None:
+    print("Cat spam scheduler started.")
 
     while True:
         try:
-            run()
+            run_daily_report()
         except Exception as e:
             print(f"Error running report: {e}")
 
         time.sleep(60)
+
+
+if __name__ == "__main__":
+    scheduler_thread = threading.Thread(target=scheduler_loop, daemon=True)
+    scheduler_thread.start()
+
+    app.run(host="0.0.0.0", port=PORT)
