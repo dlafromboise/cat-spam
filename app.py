@@ -19,13 +19,23 @@ app = Flask(__name__)
 
 CAT_KEYWORDS = [
     "cat",
+    "cats",
     "kitty",
+    "kitties",
     "kitten",
+    "kittens",
+    "feline",
     ":cat:",
     ":cat2:",
     ":catjam:",
     ":meow:",
+]
+
+GIPHY_HINTS = [
     "giphy",
+    "giphy.com",
+    "media.giphy.com",
+    "gph.is",
 ]
 
 LAST_POST_DATE = None
@@ -96,35 +106,62 @@ def get_messages() -> list:
     return messages
 
 
-def is_cat_message(msg: dict) -> bool:
-    text = msg.get("text", "").lower()
+def contains_any_keyword(text: str, keywords: list[str]) -> bool:
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in keywords)
 
-    for keyword in CAT_KEYWORDS:
-        if keyword in text:
-            return True
+
+def collect_searchable_text(msg: dict) -> str:
+    parts = []
+
+    text = msg.get("text", "")
+    if text:
+        parts.append(text)
 
     for block in msg.get("blocks", []):
-        block_text = str(block).lower()
-        for keyword in CAT_KEYWORDS:
-            if keyword in block_text:
-                return True
+        parts.append(str(block))
 
-    if "files" in msg:
-        for f in msg["files"]:
-            file_name = f.get("name", "").lower()
-            title = f.get("title", "").lower()
-            mimetype = f.get("mimetype", "").lower()
-            filetype = f.get("filetype", "").lower()
+    for attachment in msg.get("attachments", []):
+        parts.append(str(attachment))
 
-            searchable = f"{file_name} {title} {mimetype} {filetype}"
+    for file_obj in msg.get("files", []):
+        parts.append(file_obj.get("name", ""))
+        parts.append(file_obj.get("title", ""))
+        parts.append(file_obj.get("mimetype", ""))
+        parts.append(file_obj.get("filetype", ""))
+        parts.append(file_obj.get("pretty_type", ""))
+        parts.append(file_obj.get("permalink", ""))
+        parts.append(file_obj.get("url_private", ""))
+        parts.append(file_obj.get("url_private_download", ""))
 
-            if "cat" in searchable or "kitty" in searchable or "kitten" in searchable:
-                return True
+    return " ".join(parts).lower()
 
-            if mimetype.startswith("image/") and (
-                "cat" in text or "kitty" in text or "kitten" in text
-            ):
-                return True
+
+def is_probable_giphy_message(searchable_text: str) -> bool:
+    return any(hint in searchable_text for hint in GIPHY_HINTS)
+
+
+def is_cat_message(msg: dict) -> bool:
+    searchable_text = collect_searchable_text(msg)
+
+    if contains_any_keyword(searchable_text, CAT_KEYWORDS):
+        return True
+
+    # Better Giphy detection:
+    # Count as cat spam when a message appears to be Giphy-related
+    # and also contains cat-related terms anywhere in the richer metadata.
+    if is_probable_giphy_message(searchable_text):
+        if any(word in searchable_text for word in ["cat", "cats", "kitty", "kitten", "feline"]):
+            return True
+
+    # Image/file fallback:
+    # If an image-like file contains cat terms in the broader message metadata, count it.
+    for file_obj in msg.get("files", []):
+        mimetype = file_obj.get("mimetype", "").lower()
+        if mimetype.startswith("image/") and any(
+            word in searchable_text for word in ["cat", "cats", "kitty", "kitten", "feline"]
+        ):
+            return True
 
     return False
 
