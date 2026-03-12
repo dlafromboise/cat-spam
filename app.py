@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import datetime
 from collections import defaultdict
@@ -21,6 +22,8 @@ CAT_KEYWORDS = [
     ":meow:",
     "giphy",
 ]
+
+LAST_POST_DATE = None
 
 
 def get_channel_members() -> int:
@@ -195,12 +198,21 @@ def post_message(text: str) -> None:
 
 def should_post_now() -> bool:
     now_pt = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
-    return now_pt.hour == 17
+    return now_pt.hour == 17 and now_pt.minute == 0
 
 
 def run() -> None:
+    global LAST_POST_DATE
+
+    now_pt = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
+    today_str = now_pt.strftime("%Y-%m-%d")
+
     if not should_post_now():
-        print("Not 5 PM America/Los_Angeles yet. Exiting.")
+        print("Not 5:00 PM America/Los_Angeles yet. Exiting.")
+        return
+
+    if LAST_POST_DATE == today_str:
+        print("Report already posted today. Exiting.")
         return
 
     member_count = get_channel_members()
@@ -208,8 +220,18 @@ def run() -> None:
     cat_counts = collect_cat_stats(messages)
     report = build_report(cat_counts, member_count)
     post_message(report)
+
+    LAST_POST_DATE = today_str
     print("Daily report posted successfully.")
 
 
 if __name__ == "__main__":
-    run()
+    print("Cat spam monitor started.")
+
+    while True:
+        try:
+            run()
+        except Exception as e:
+            print(f"Error running report: {e}")
+
+        time.sleep(60)
