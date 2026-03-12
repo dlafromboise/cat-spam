@@ -1,137 +1,142 @@
 import os
-import re
-from collections import Counter
+import requests
+import datetime
+from collections import defaultdict
 
-import emoji
-from flask import Flask, request
-from openai import OpenAI
-from slack_bolt import App
-from slack_bolt.adapter.flask import SlackRequestHandler
+SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
+CHANNEL_ID = os.environ["CHANNEL_ID"]
 
-BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
-SIGNING_SECRET = os.environ["SLACK_SIGNING_SECRET"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+headers = {
+    "Authorization": f"Bearer {SLACK_BOT_TOKEN}"
+}
 
-TARGET_CHANNEL = "cat-spam-test-2"
-CAT_CHANNEL = "cat-spam-random-kuiper"
+CAT_KEYWORDS = [
+    "cat", "kitty", "kitten", ":cat:", ":cat2:", ":catjam:"
+]
 
-app = App(token=BOT_TOKEN, signing_secret=SIGNING_SECRET)
-flask_app = Flask(__name__)
-handler = SlackRequestHandler(app)
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+def get_channel_members():
+    url = "https://slack.com/api/conversations.members"
+    params = {
+        "channel": CHANNEL_ID,
+        "limit": 1000
+    }
 
-emoji_pattern = r":[a-zA-Z0-9_+-]+:"
-
-
-def extract_emojis(text):
-    slack_emojis = re.findall(emoji_pattern, text)
-    unicode_emojis = [c for c in text if c in emoji.EMOJI_DATA]
-    return slack_emojis + unicode_emojis
+    res = requests.get(url, headers=headers, params=params).json()
+    return len(res.get("members", []))
 
 
-def emoji_spam(text):
-    emojis = extract_emojis(text)
-    counts = Counter(emojis)
-    return any(count > 3 for count in counts.values())
+def get_messages():
+    url = "https://slack.com/api/conversations.history"
+
+    one_week_ago = datetime.datetime.now() - datetime.timedelta(days=7)
+    oldest = one_week_ago.timestamp()
+
+    params = {
+        "channel": CHANNEL_ID,
+        "limit": 1000,
+        "oldest": oldest
+    }
+
+    res = requests.get(url, headers=headers, params=params).json()
+    return res.get("messages", [])
 
 
-def is_cat_image(image_url):
-    """
-    Returns True only if the image clearly contains a real cat.
-    Returns False for non-cat images, drawings, unclear images, or API errors.
-    """
-    try:
-        response = openai_client.responses.create(
-            model="gpt-4.1-mini",
-            input=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                "Look at this image and answer with ONLY one word: "
-                                "YES if this image clearly contains a real cat. "
-                                "Answer NO for anything else, including dogs, people, "
-                                "objects, memes, cartoons, drawings, text-only images, "
-                                "or if you are unsure."
-                            ),
-                        },
-                        {
-                            "type": "input_image",
-                            "image_url": image_url,
-                        },
-                    ],
-                }
-            ],
+def is_cat_message(msg):
+
+    text = msg.get("text", "").lower()
+
+    for keyword in CAT_KEYWORDS:
+        if keyword in text:
+            return True
+
+    if "files" in msg:
+        for f in msg["files"]:
+            name = f.get("name", "").lower()
+            if "cat" in name:
+                return True
+
+    return False
+
+
+def collect_cat_stats(messages):
+
+    counts = defaultdict(int)
+
+    for msg in messages:
+
+        if "user" not in msg:
+            continue
+
+        if is_cat_message(msg):
+            counts[msg["user"]] += 1
+
+    return counts
+
+
+def get_username(user_id):
+
+    url = "https://slack.com/api/users.info"
+    params = {"user": user_id}
+
+    res = requests.get(url, headers=headers, params=params).json()
+
+    if res.get("ok"):
+        return res["user"]["name"]
+
+    return user_id
+
+
+def build_report(cat_counts, member_count):
+
+    top_users = sorted(cat_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+    total_interruptions = 0
+
+    lines = []
+    lines.append("*Cat Spam Weekly Impact Report — #random-kuiper*\n")
+
+    for user_id, count in top_users:
+
+        interruptions = member_count * count
+        total_interruptions += interruptions
+
+        username = get_username(user_id)
+
+        lines.append(
+            f"• @{username}\n"
+            f"     o Cat Spam This Week: {count}\n"
+            f"     o Interruptions: {member_count} people x {count} posts = {interruptions:,} feed disruptions\n"
         )
 
-        answer = response.output_text.strip().upper()
-        return answer == "YES"
+    lines.append(f"\n• Channel Interruptions this week: {total_interruptions:,}")
 
-    except Exception as e:
-        print(f"OpenAI image check failed: {e}")
-        return False
+    return "\n".join(lines)
 
 
-@app.event("message")
-def handle_message(body, client):
-    event = body["event"]
+def post_message(text):
 
-    if "bot_id" in event:
-        return
+    url = "https://slack.com/api/chat.postMessage"
 
-    text = event.get("text", "")
-    ts = event["ts"]
-    channel = event["channel"]
+    payload = {
+        "channel": CHANNEL_ID,
+        "text": text
+    }
 
-    # Only watch the target channel
-    if channel != TARGET_CHANNEL:
-        return
-
-    # Emoji spam check
-    if emoji_spam(text):
-        client.chat_postMessage(
-            channel=channel,
-            thread_ts=ts,
-            text="Too many emojis! 🛑"
-        )
-
-    # Check for uploaded images
-    if "files" in event:
-        for file in event["files"]:
-            mimetype = file.get("mimetype", "")
-            if not mimetype.startswith("image"):
-                continue
-
-            image_url = file.get("url_private")
-            if not image_url:
-                continue
-
-            if is_cat_image(image_url):
-                client.chat_postMessage(
-                    channel=CAT_CHANNEL,
-                    text=image_url
-                )
-
-                client.chat_delete(
-                    channel=channel,
-                    ts=ts
-                )
-
-            else:
-                print("Image was not a cat. Leaving it alone.")
+    requests.post(url, headers=headers, json=payload)
 
 
-@flask_app.route("/slack/events", methods=["POST"])
-def slack_events():
-    return handler.handle(request)
+def run():
 
+    member_count = get_channel_members()
 
-@flask_app.route("/", methods=["GET"])
-def health():
-    return "cat-spam running"
+    messages = get_messages()
+
+    cat_counts = collect_cat_stats(messages)
+
+    report = build_report(cat_counts, member_count)
+
+    post_message(report)
 
 
 if __name__ == "__main__":
-    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    run()
