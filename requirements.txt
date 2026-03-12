@@ -1,5 +1,1 @@
-slack-bolt
-flask
-emoji
-gunicorn
-openai
+requests
