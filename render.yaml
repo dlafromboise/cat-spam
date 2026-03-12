@@ -1,7 +1,12 @@
 services:
-  - type: web
-    name: cat-spam
+  - type: cron
+    name: cat-spam-report
     runtime: python
+    schedule: "0 * * * *"
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:flask_app
-    plan: free
+    startCommand: python app.py
+    envVars:
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: CHANNEL_ID
+        sync: false
