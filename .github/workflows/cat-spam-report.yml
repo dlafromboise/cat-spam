@@ -1,0 +1,29 @@
+name: Cat Spam Report
+
+on:
+  schedule:
+    - cron: "7,12,17,22,27,32,37,42,47,52,57 23 * * *"
+    - cron: "7,12,17,22,27,32,37,42,47,52,57 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  run-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run cat spam report
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: python app.py
