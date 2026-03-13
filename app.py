@@ -47,30 +47,18 @@ def health() -> str:
 
 
 def get_channel_members() -> int:
-    url = "https://slack.com/api/conversations.members"
-    members = []
-    cursor = None
+    url = "https://slack.com/api/conversations.info"
+    params = {
+        "channel": CHANNEL_ID,
+        "include_num_members": True,
+    }
 
-    while True:
-        params = {
-            "channel": CHANNEL_ID,
-            "limit": 1000,
-        }
-        if cursor:
-            params["cursor"] = cursor
+    res = requests.get(url, headers=headers, params=params, timeout=30).json()
 
-        res = requests.get(url, headers=headers, params=params, timeout=30).json()
+    if not res.get("ok"):
+        raise RuntimeError(f"conversations.info failed: {res}")
 
-        if not res.get("ok"):
-            raise RuntimeError(f"conversations.members failed: {res}")
-
-        members.extend(res.get("members", []))
-        cursor = res.get("response_metadata", {}).get("next_cursor")
-
-        if not cursor:
-            break
-
-    return len(members)
+    return res["channel"]["num_members"]
 
 
 def get_messages() -> list:
@@ -86,7 +74,7 @@ def get_messages() -> list:
     while True:
         params = {
             "channel": CHANNEL_ID,
-            "limit": 1000,
+            "limit": 200,
             "oldest": oldest,
         }
         if cursor:
@@ -147,15 +135,10 @@ def is_cat_message(msg: dict) -> bool:
     if contains_any_keyword(searchable_text, CAT_KEYWORDS):
         return True
 
-    # Better Giphy detection:
-    # Count as cat spam when a message appears to be Giphy-related
-    # and also contains cat-related terms anywhere in the richer metadata.
     if is_probable_giphy_message(searchable_text):
         if any(word in searchable_text for word in ["cat", "cats", "kitty", "kitten", "feline"]):
             return True
 
-    # Image/file fallback:
-    # If an image-like file contains cat terms in the broader message metadata, count it.
     for file_obj in msg.get("files", []):
         mimetype = file_obj.get("mimetype", "").lower()
         if mimetype.startswith("image/") and any(
@@ -202,14 +185,15 @@ def build_report(cat_counts: dict, member_count: int) -> str:
     total_interruptions = 0
 
     lines = []
-    lines.append("*Cat Spam Weekly Impact Report — #random-kuiper*")
+    lines.append("*Rolling 7-Day Cat Spam Impact Report — #random-kuiper*")
+    lines.append("Window: last 7 days ending at report time")
     lines.append(f"Channel members at report time: {member_count:,}")
     lines.append("")
 
     if not top_users:
         lines.append("• No cat spam detected in the last 7 days.")
         lines.append("")
-        lines.append("• Channel Interruptions this week: 0")
+        lines.append("• Rolling 7-Day Channel Interruptions: 0")
         return "\n".join(lines)
 
     for user_id, count in top_users:
@@ -218,13 +202,13 @@ def build_report(cat_counts: dict, member_count: int) -> str:
         username = get_username(user_id)
 
         lines.append(f"• @{username}")
-        lines.append(f"     o Cat Spam This Week: {count}")
+        lines.append(f"     o Cat Spam in Last 7 Days: {count}")
         lines.append(
             f"     o Interruptions: {member_count:,} people x {count} posts = {interruptions:,} feed disruptions"
         )
         lines.append("")
 
-    lines.append(f"• Channel Interruptions this week: {total_interruptions:,}")
+    lines.append(f"• Rolling 7-Day Channel Interruptions: {total_interruptions:,}")
 
     return "\n".join(lines)
 
@@ -245,7 +229,7 @@ def post_message(text: str) -> None:
 
 def should_post_now() -> bool:
     now_pt = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
-    return now_pt.hour == 17 and now_pt.minute == 0
+    return 16 <= now_pt.hour < 17
 
 
 def run_daily_report() -> None:
@@ -255,7 +239,7 @@ def run_daily_report() -> None:
     today_str = now_pt.strftime("%Y-%m-%d")
 
     if not should_post_now():
-        print("Not 5:00 PM America/Los_Angeles yet. Exiting.")
+        print("Not in 4:00 PM–5:00 PM America/Los_Angeles window. Exiting.")
         return
 
     if LAST_POST_DATE == today_str:
@@ -281,7 +265,7 @@ def scheduler_loop() -> None:
         except Exception as e:
             print(f"Error running report: {e}")
 
-        time.sleep(60)
+        time.sleep(300)
 
 
 if __name__ == "__main__":
