@@ -1,21 +1,15 @@
 import os
-import time
-import threading
 import requests
 import datetime
 from collections import defaultdict
 from zoneinfo import ZoneInfo
-from flask import Flask
 
 SLACK_BOT_TOKEN = os.environ["SLACK_BOT_TOKEN"]
 CHANNEL_ID = os.environ["CHANNEL_ID"]
-PORT = int(os.environ.get("PORT", 10000))
 
-headers = {
+HEADERS = {
     "Authorization": f"Bearer {SLACK_BOT_TOKEN}"
 }
-
-app = Flask(__name__)
 
 CAT_KEYWORDS = [
     "cat",
@@ -38,13 +32,6 @@ GIPHY_HINTS = [
     "gph.is",
 ]
 
-LAST_POST_DATE = None
-
-
-@app.route("/", methods=["GET"])
-def health() -> str:
-    return "cat-spam is running"
-
 
 def get_channel_members() -> int:
     url = "https://slack.com/api/conversations.info"
@@ -53,7 +40,7 @@ def get_channel_members() -> int:
         "include_num_members": True,
     }
 
-    res = requests.get(url, headers=headers, params=params, timeout=30).json()
+    res = requests.get(url, headers=HEADERS, params=params, timeout=30).json()
 
     if not res.get("ok"):
         raise RuntimeError(f"conversations.info failed: {res}")
@@ -80,7 +67,7 @@ def get_messages() -> list:
         if cursor:
             params["cursor"] = cursor
 
-        res = requests.get(url, headers=headers, params=params, timeout=30).json()
+        res = requests.get(url, headers=HEADERS, params=params, timeout=30).json()
 
         if not res.get("ok"):
             raise RuntimeError(f"conversations.history failed: {res}")
@@ -172,7 +159,7 @@ def get_username(user_id: str) -> str:
     url = "https://slack.com/api/users.info"
     params = {"user": user_id}
 
-    res = requests.get(url, headers=headers, params=params, timeout=30).json()
+    res = requests.get(url, headers=HEADERS, params=params, timeout=30).json()
 
     if res.get("ok"):
         return res["user"].get("name", user_id)
@@ -221,7 +208,7 @@ def post_message(text: str) -> None:
         "text": text,
     }
 
-    res = requests.post(url, headers=headers, json=payload, timeout=30).json()
+    res = requests.post(url, headers=HEADERS, json=payload, timeout=30).json()
 
     if not res.get("ok"):
         raise RuntimeError(f"chat.postMessage failed: {res}")
@@ -233,17 +220,8 @@ def should_post_now() -> bool:
 
 
 def run_daily_report() -> None:
-    global LAST_POST_DATE
-
-    now_pt = datetime.datetime.now(ZoneInfo("America/Los_Angeles"))
-    today_str = now_pt.strftime("%Y-%m-%d")
-
     if not should_post_now():
         print("Not in 4:00 PM–5:00 PM America/Los_Angeles window. Exiting.")
-        return
-
-    if LAST_POST_DATE == today_str:
-        print("Report already posted today. Exiting.")
         return
 
     member_count = get_channel_members()
@@ -251,25 +229,8 @@ def run_daily_report() -> None:
     cat_counts = collect_cat_stats(messages)
     report = build_report(cat_counts, member_count)
     post_message(report)
-
-    LAST_POST_DATE = today_str
     print("Daily report posted successfully.")
 
 
-def scheduler_loop() -> None:
-    print("Cat spam scheduler started.")
-
-    while True:
-        try:
-            run_daily_report()
-        except Exception as e:
-            print(f"Error running report: {e}")
-
-        time.sleep(300)
-
-
 if __name__ == "__main__":
-    scheduler_thread = threading.Thread(target=scheduler_loop, daemon=True)
-    scheduler_thread.start()
-
-    app.run(host="0.0.0.0", port=PORT)
+    run_daily_report()
