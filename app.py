@@ -290,13 +290,6 @@ def collect_cat_stats(messages: list) -> dict:
     return counts
 
 
-def get_username(user_id: str) -> str:
-    url = "https://slack.com/api/users.info"
-    params = {"user": user_id}
-    res = slack_get(url, params)
-    return res["user"].get("name", user_id)
-
-
 def build_report(cat_counts: dict, member_count: int) -> str:
     top_users = sorted(cat_counts.items(), key=lambda x: x[1], reverse=True)[:10]
     total_interruptions = 0
@@ -316,9 +309,8 @@ def build_report(cat_counts: dict, member_count: int) -> str:
     for user_id, count in top_users:
         interruptions = member_count * count
         total_interruptions += interruptions
-        username = get_username(user_id)
 
-        lines.append(f"• @{username}")
+        lines.append(f"• <@{user_id}>")
         lines.append(f"     o Cat Spam in Last 7 Days: {count}")
         lines.append(
             f"     o Interruptions: {member_count:,} people x {count} posts = {interruptions:,} feed disruptions"
